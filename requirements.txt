@@ -1,0 +1,9 @@
+streamlit
+pandas
+numpy
+plotly
+sqlalchemy
+psycopg2-binary
+reportlab
+kaleido
+bcrypt>=4.0.0
