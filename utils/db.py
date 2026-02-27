@@ -7,10 +7,21 @@ import pandas as pd
 
 # new helper for writing dataframes to the database
 
+# connection string can be provided through the DATABASE_URL environment
+# variable.  This allows the same code to work locally (development) and
+# in production without editing the source.  If the variable is missing we
+# fall back to a sensible local default but log a warning so the user knows.
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 if not DATABASE_URL:
+    # default is convenient for development but should be overridden in
+    # staging/production environments.
     DATABASE_URL = "postgresql+psycopg2://postgres:jagrelem@localhost:5432/rcc_test"
+    import warnings
+    warnings.warn(
+        "DATABASE_URL not set; using built-in sqlite default.\n"
+        "Set the DATABASE_URL environment variable to point to your PostgreSQL instance.",
+        UserWarning,
+    )
 
 # -----------------------------
 # CACHE ENGINE AS RESOURCE
