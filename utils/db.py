@@ -5,6 +5,10 @@ from sqlalchemy import create_engine, text
 import streamlit as st
 import pandas as pd
 
+# if a .env file exists, load variables from it (python-dotenv)
+from dotenv import load_dotenv
+load_dotenv()
+
 # new helper for writing dataframes to the database
 
 # connection string can be provided through the DATABASE_URL environment
