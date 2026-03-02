@@ -82,9 +82,11 @@ def read_transformer_load(start_date: str, end_date: str) -> pd.DataFrame:
     """)
 
     data = pd.read_sql_query(query, engine, params={"start_date": start_date, "end_date": end_date})
-    print(f"The Data\n{data}")
-    return order_reading_time(data)
-    #return pd.read_sql_query(query, engine, params={"start_date": start_date, "end_date": end_date})
+    # avoid coercing reading_time into a fixed set of categories; many times
+    # include minutes or irregular values which would end up as NaN under the
+    # previous order_reading_time logic.  Returning the raw dataframe preserves
+    # the original time strings.
+    return data
 
 @st.cache_data(ttl=300)
 def read_outages(start_date: str, end_date: str) -> pd.DataFrame:
@@ -334,3 +336,18 @@ def insert_outages_from_csv(csv_path: str) -> None:
         raw_conn.commit()
     finally:
         raw_conn.close()
+
+
+
+@st.cache_data(ttl=300)
+def read_tcn_sla_compliance() -> pd.DataFrame:
+    """Return the TCN SLA compliance table with per-day outage limits.
+
+    Columns: station, feeder_name, maximum_outage_hours
+    """
+    engine = get_engine()
+    query = text("""
+        SELECT station, feeder_name, maximum_outage_hours
+        FROM tcn_sla_compliance
+    """)
+    return pd.read_sql_query(query, engine)

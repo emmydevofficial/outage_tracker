@@ -7,7 +7,7 @@ This sample assumes a 'customers' column is NOT available, so it shows station-l
 import streamlit as st
 from utils.auth import login
 import pandas as pd
-from utils.db import read_outages
+from utils.db import read_outages, read_tcn_sla_compliance
 from datetime import date, timedelta
 import plotly.express as px
 
@@ -76,10 +76,15 @@ feeder_summary = feeder_summary.drop(columns=["total_outage_min"])
 st.dataframe(feeder_summary)
 
 st.subheader("📊 Outage Table By Party Responsible")
-feeder_party_pivot = out_df.groupby(['feeder_33kv', 'party_responsible']).agg(
+
+# determine number of days in the selected range (inclusive)
+days_span = (end_date - start_date).days + 1
+
+# pivot by station and feeder so that we can join back against SLA data
+feeder_party_pivot = out_df.groupby(['station','feeder_33kv', 'party_responsible']).agg(
     total_outage_hour=('duration_min', lambda x: x.sum() / 60)
 ).reset_index().pivot_table(
-    index='feeder_33kv',
+    index=['station','feeder_33kv'],
     columns='party_responsible',
     values='total_outage_hour',
     aggfunc='sum',
@@ -88,6 +93,34 @@ feeder_party_pivot = out_df.groupby(['feeder_33kv', 'party_responsible']).agg(
 
 feeder_party_pivot.columns.name = None  # clean up column name
 feeder_party_pivot = feeder_party_pivot.reset_index()
+
+# merge SLA table (per day) and scale by number of days
+sla = read_tcn_sla_compliance()
+if not sla.empty:
+    sla['maximum_outage_hours'] = sla['maximum_outage_hours'] * days_span
+
+# join on both station and feeder name
+feeder_party_pivot = feeder_party_pivot.merge(
+    sla,
+    left_on=['station','feeder_33kv'],
+    right_on=['station','feeder_name'],
+    how='left'
+)
+
+# drop the redundant feeder_name column added by the merge
+if 'feeder_name' in feeder_party_pivot.columns:
+    feeder_party_pivot = feeder_party_pivot.drop(columns=['feeder_name'])
+
+# absent entries result in NaN; treat as zero (unknown SLA)
+feeder_party_pivot['maximum_outage_hours'] = feeder_party_pivot['maximum_outage_hours'].fillna(0)
+
+# calculate disco and tcn allowances
+feeder_party_pivot['max_hours_disco'] = feeder_party_pivot['maximum_outage_hours'] * 0.7
+feeder_party_pivot['max_hours_tcn'] = feeder_party_pivot['maximum_outage_hours'] * 0.3
+
+feeder_party_pivot.columns.name = None  # clean up column name
+# reset_index may introduce an unwanted 'index' column; drop it if present
+feeder_party_pivot = feeder_party_pivot.reset_index(drop=True)
 
 st.dataframe(feeder_party_pivot)
 
