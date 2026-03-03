@@ -118,11 +118,39 @@ feeder_party_pivot['maximum_outage_hours'] = feeder_party_pivot['maximum_outage_
 feeder_party_pivot['max_hours_disco'] = feeder_party_pivot['maximum_outage_hours'] * 0.7
 feeder_party_pivot['max_hours_tcn'] = feeder_party_pivot['maximum_outage_hours'] * 0.3
 
+# ensure the dynamic TCN column exists and default to zero when absent
+if 'TCN' not in feeder_party_pivot.columns:
+    feeder_party_pivot['TCN'] = 0
+
+# compute the remaining/available hours for TCN
+feeder_party_pivot['available_outage_hours_tcn'] = (
+    feeder_party_pivot['max_hours_tcn'] - feeder_party_pivot['TCN']
+)
+
 feeder_party_pivot.columns.name = None  # clean up column name
 # reset_index may introduce an unwanted 'index' column; drop it if present
 feeder_party_pivot = feeder_party_pivot.reset_index(drop=True)
 
-st.dataframe(feeder_party_pivot)
+# filtering options for available outage hours
+status_choice = st.selectbox(
+    "Show rows where TCN availability is", 
+    options=["All","Positive (≥0)","Negative (<0)"],
+    index=0
+)
+
+filtered = feeder_party_pivot.copy()
+if status_choice == "Positive (≥0)":
+    filtered = filtered[filtered['available_outage_hours_tcn'] >= 0]
+elif status_choice == "Negative (<0)":
+    filtered = filtered[filtered['available_outage_hours_tcn'] < 0]
+
+# apply color styling to available hours column
+styler = filtered.style.applymap(
+    lambda v: 'color: green' if v > 0 else 'color: red',
+    subset=['available_outage_hours_tcn']
+)
+
+st.dataframe(styler)
 
 fig = px.bar(feeder_summary.head(20), x='feeder_33kv', y='outage_hrs', title='Top feeders by total outage minutes')
 st.plotly_chart(fig, use_container_width=True)
