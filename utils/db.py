@@ -100,6 +100,74 @@ def read_outages(start_date: str, end_date: str) -> pd.DataFrame:
     """)
     return pd.read_sql_query(query, engine, params={"start_date": start_date, "end_date": end_date})
 
+# -----------------------------
+# USER AUTHENTICATION HELPERS
+# -----------------------------
+
+def verify_user_password(username: str, password: str) -> bool:
+    """Return True if the given username/password pair is valid."""
+    import bcrypt
+    engine = get_engine()
+    query = text("SELECT password_hash FROM users WHERE username = :u")
+    with engine.connect() as conn:
+        row = conn.execute(query, {"u": username}).fetchone()
+    if row is None:
+        return False
+    stored_hash = row[0]
+    return bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8"))
+
+
+def get_user_role(username: str) -> str | None:
+    """Return the role for the given username, or None if not found."""
+    engine = get_engine()
+    query = text("SELECT user_role FROM users WHERE username = :u")
+    with engine.connect() as conn:
+        row = conn.execute(query, {"u": username}).fetchone()
+    return row[0] if row else None
+
+
+# -----------------------------
+# DELETE OPERATIONS
+# -----------------------------
+
+def delete_outages_by_date(start_date: str, end_date: str) -> int:
+    """Delete all outage records where date_off equals the given date.
+
+    Parameters
+    ----------
+    start_date: str
+        Date string in 'YYYY-MM-DD' format.
+    end_date: str
+        Date string in 'YYYY-MM-DD' format.
+
+    Returns
+    -------
+    int
+        Number of rows deleted.
+    """
+    engine = get_engine()
+    query = text("DELETE FROM outages WHERE date_off BETWEEN :start_date AND :end_date")
+    with engine.begin() as conn:
+        result = conn.execute(query, {"start_date": start_date, "end_date": end_date})
+        return result.rowcount
+
+
+def truncate_outages() -> None:
+    """Truncate the outages table and reset the id sequence.
+
+    This is a destructive, irreversible operation that removes ALL records
+    and resets the auto-increment id back to 1.  Only admins should be
+    allowed to call this.
+    """
+    engine = get_engine()
+    raw_conn = engine.raw_connection()
+    try:
+        cur = raw_conn.cursor()
+        cur.execute("TRUNCATE TABLE outages RESTART IDENTITY CASCADE;")
+        raw_conn.commit()
+    finally:
+        raw_conn.close()
+
 
 def insert_outages(df: pd.DataFrame) -> None:
     """Insert outage records contained in ``df`` into the permanent table.

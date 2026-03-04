@@ -98,6 +98,7 @@ feeder_party_pivot = feeder_party_pivot.reset_index()
 sla = read_tcn_sla_compliance()
 if not sla.empty:
     sla['maximum_outage_hours'] = sla['maximum_outage_hours'] * days_span
+    sla["actual_outage_hours"] = "Yes"
 
 # join on both station and feeder name
 feeder_party_pivot = feeder_party_pivot.merge(
@@ -112,7 +113,9 @@ if 'feeder_name' in feeder_party_pivot.columns:
     feeder_party_pivot = feeder_party_pivot.drop(columns=['feeder_name'])
 
 # absent entries result in NaN; treat as zero (unknown SLA)
+feeder_party_pivot['maximum_outage_hours'] = 4 * days_span  # default to 4 hours per day if SLA data is missing
 feeder_party_pivot['maximum_outage_hours'] = feeder_party_pivot['maximum_outage_hours'].fillna(0)
+feeder_party_pivot["actual_outage_hours"] = feeder_party_pivot['actual_outage_hours'].fillna("Assumed 4 hours/day (not in db)")
 
 # calculate disco and tcn allowances
 feeder_party_pivot['max_hours_disco'] = feeder_party_pivot['maximum_outage_hours'] * 0.7
