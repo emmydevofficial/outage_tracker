@@ -95,7 +95,7 @@ def read_outages(start_date: str, end_date: str) -> pd.DataFrame:
         SELECT id, disco, region, area, station, feeder_33kv, date_off, time_off, date_on, time_on,
                duration_outage, outage_class, last_load, event_indication, party_responsible, weather_condition
         FROM outages
-        WHERE date_off BETWEEN :start_date AND :end_date
+        WHERE date_on BETWEEN :start_date AND :end_date
         ORDER BY date_off, time_off
     """)
     return pd.read_sql_query(query, engine, params={"start_date": start_date, "end_date": end_date})
