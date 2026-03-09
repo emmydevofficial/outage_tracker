@@ -49,6 +49,22 @@ out_df['start_ts'] = pd.to_datetime(out_df['date_off'].astype(str) + ' ' + out_d
 out_df['end_ts'] = pd.to_datetime(out_df['date_on'].astype(str) + ' ' + out_df['time_on'].astype(str), errors='coerce')
 out_df['duration_min'] = (out_df['end_ts'] - out_df['start_ts']).dt.total_seconds() / 60.0
 
+# Monthly-clipped duration: clips start/end timestamps to calendar month boundaries.
+# This ensures cross-month outages (e.g. trip on Feb-28 22:00, restored Mar-01 09:30)
+# only count the hours that fall within the month(s) covered by the selected date range.
+#   → Viewing March only  → 9.5 hrs  (clipped start = Mar-01 00:00)
+#   → Viewing February only → 2.0 hrs  (clipped end   = Feb-28 23:59:59)
+#   → Viewing both months  → 11.5 hrs (no clipping needed, full duration counted)
+month_start = pd.Timestamp(start_date.replace(day=1))                          # 1st of start month 00:00
+import calendar
+last_day = calendar.monthrange(end_date.year, end_date.month)[1]
+month_end = pd.Timestamp(end_date.replace(day=last_day)) + pd.Timedelta(days=1)  # 1st of next month (exclusive)
+
+out_df['clipped_start'] = out_df['start_ts'].clip(lower=month_start, upper=month_end)
+out_df['clipped_end']   = out_df['end_ts'].clip(lower=month_start, upper=month_end)
+out_df['duration_min_clipped'] = (out_df['clipped_end'] - out_df['clipped_start']).dt.total_seconds() / 60.0
+out_df['duration_min_clipped'] = out_df['duration_min_clipped'].clip(lower=0)  # guard against negatives
+
 station_summary = out_df.groupby('station').agg(
     outages_count=('id', 'count'),
     total_outage_min=('duration_min', 'sum')
@@ -81,8 +97,9 @@ st.subheader("📊 Outage Table By Party Responsible")
 days_span = (end_date - start_date).days + 1
 
 # pivot by station and feeder so that we can join back against SLA data
+# NOTE: uses duration_min_clipped so cross-month outages only count hours within the selected date range
 feeder_party_pivot = out_df.groupby(['station','feeder_33kv', 'party_responsible']).agg(
-    total_outage_hour=('duration_min', lambda x: x.sum() / 60)
+    total_outage_hour=('duration_min_clipped', lambda x: x.sum() / 60)
 ).reset_index().pivot_table(
     index=['station','feeder_33kv'],
     columns='party_responsible',
