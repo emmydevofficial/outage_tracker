@@ -78,7 +78,11 @@ def generate_word_report(
     image_paths: List[str] = None,
     output_path: str = None,
     feeder_party_pivot: pd.DataFrame = None,
-    feeder_party_violations: pd.DataFrame = None
+    feeder_party_violations: pd.DataFrame = None,
+    top_prolonged_outages: pd.DataFrame = None,
+    wrong_attribution: pd.DataFrame = None,
+    missing_values_outages: pd.DataFrame = None,
+    unrestored_feeders: pd.DataFrame = None
 ) -> str:
     """
     Generate a Word (.docx) report with outage analytics data.
@@ -111,6 +115,14 @@ def generate_word_report(
         Feeder-Party responsible pivot table
     feeder_party_violations : pd.DataFrame, optional
         SLA violations (negative TCN availability)
+    top_prolonged_outages : pd.DataFrame, optional
+        Top 20% most prolonged outages
+    wrong_attribution : pd.DataFrame, optional
+        Outages with wrong party attribution
+    missing_values_outages : pd.DataFrame, optional
+        Outages with missing values (excluding date_on/time_on)
+    unrestored_feeders : pd.DataFrame, optional
+        Feeders yet to be restored (no date_on/time_on)
     
     Returns
     -------
@@ -202,6 +214,34 @@ def generate_word_report(
             add_table_to_word(doc, feeder_party_violations, 'SLA Violations - TCN Negative Availability (TCN < 0)')
         except Exception as e:
             doc.add_paragraph(f"[Error adding SLA Violations table: {str(e)}]")
+    
+    # Top 20% Most Prolonged Outages
+    if top_prolonged_outages is not None and not top_prolonged_outages.empty:
+        try:
+            add_table_to_word(doc, top_prolonged_outages, 'Top 20% Most Prolonged Outages')
+        except Exception as e:
+            doc.add_paragraph(f"[Error adding Prolonged Outages table: {str(e)}]")
+    
+    # Wrong Attribution for Party Responsible
+    if wrong_attribution is not None and not wrong_attribution.empty:
+        try:
+            add_table_to_word(doc, wrong_attribution, 'Wrong Attribution for Party Responsible')
+        except Exception as e:
+            doc.add_paragraph(f"[Error adding Wrong Attribution table: {str(e)}]")
+    
+    # Outages with Missing Values
+    if missing_values_outages is not None and not missing_values_outages.empty:
+        try:
+            add_table_to_word(doc, missing_values_outages, 'Outages with Missing Values')
+        except Exception as e:
+            doc.add_paragraph(f"[Error adding Missing Values table: {str(e)}]")
+    
+    # Feeders Yet to be Restored
+    if unrestored_feeders is not None and not unrestored_feeders.empty:
+        try:
+            add_table_to_word(doc, unrestored_feeders, 'Feeders Yet to be Restored')
+        except Exception as e:
+            doc.add_paragraph(f"[Error adding Unrestored Feeders table: {str(e)}]")
     
     # Raw Outages Table
     if not outage_df.empty:

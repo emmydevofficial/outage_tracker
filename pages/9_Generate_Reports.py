@@ -219,6 +219,27 @@ for region in selected_regions:
     feeder_party_pivot_violations = feeder_party_pivot[feeder_party_pivot['available_outage_hours_tcn'] < 0].copy()
     
     # ===========================
+    # ADDITIONAL TABLES FOR REPORT
+    # ===========================
+    
+    # 1. Top 20% most prolonged outages
+    prolonged_outages = region_df.sort_values('duration_min', ascending=False)
+    top_20_percent_count = max(1, int(len(prolonged_outages) * 0.2))  # At least 1
+    top_prolonged_outages = prolonged_outages.head(top_20_percent_count)[['station', 'feeder_33kv', 'date_off', 'time_off', 'duration_min', 'outage_class', 'party_responsible']].copy()
+    
+    # 2. Wrong attribution for party_responsible
+    correct_parties = ['DISCO', 'TCN', 'GENCO']
+    wrong_attribution = region_df[~region_df['party_responsible'].isin(correct_parties)][['station', 'feeder_33kv', 'date_off', 'time_off', 'party_responsible', 'outage_class']].copy()
+    
+    # 3. Outages with missing values (excluding date_on and time_on)
+    exclude_cols = ['date_on', 'time_on']
+    check_cols = [col for col in region_df.columns if col not in exclude_cols]
+    missing_values_outages = region_df[region_df[check_cols].isnull().any(axis=1)][['station', 'feeder_33kv', 'date_off', 'time_off', 'outage_class', 'party_responsible']].copy()
+    
+    # 4. Feeders yet to be restored (date_on and time_on are empty)
+    unrestored_feeders = region_df[region_df['date_on'].isnull() & region_df['time_on'].isnull()][['station', 'feeder_33kv', 'date_off', 'time_off', 'outage_class', 'party_responsible']].copy()
+    
+    # ===========================
     # CREATE CHARTS
     # ===========================
     
@@ -315,7 +336,11 @@ for region in selected_regions:
                     image_paths=image_paths,
                     output_path=word_path,
                     feeder_party_pivot=feeder_party_pivot,
-                    feeder_party_violations=feeder_party_pivot_violations
+                    feeder_party_violations=feeder_party_pivot_violations,
+                    top_prolonged_outages=top_prolonged_outages,
+                    wrong_attribution=wrong_attribution,
+                    missing_values_outages=missing_values_outages,
+                    unrestored_feeders=unrestored_feeders
                 )
                 
                 with open(word_path, "rb") as f:
