@@ -9,7 +9,7 @@ from utils.auth import login
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from utils.db import read_outages, read_tcn_sla_compliance
+from utils.db import read_outages, read_tcn_sla_compliance, read_outages_using_date_off
 from utils.report_generator import generate_word_report, generate_pdf_report_with_tables
 from datetime import date, timedelta
 import os
@@ -42,6 +42,7 @@ with col1:
 # ===========================
 with st.spinner("Loading outage data..."):
     out_df = read_outages(str(start_date), str(end_date))
+    out_with_date_off_df = read_outages_using_date_off(str(start_date), str(end_date))
 
 if out_df.empty:
     st.warning("No outage records for this range")
@@ -89,6 +90,7 @@ for region in selected_regions:
     
     # Filter data for this region
     region_df = out_df[out_df['region'] == region].copy()
+    region_with_date_off_df = out_with_date_off_df[out_with_date_off_df['region'] == region].copy()
     
     if region_df.empty:
         st.warning(f"No data for {region}")
@@ -228,16 +230,27 @@ for region in selected_regions:
     top_prolonged_outages = prolonged_outages.head(top_20_percent_count)[['station', 'feeder_33kv', 'date_off', 'time_off', 'duration_min', 'outage_class', 'party_responsible']].copy()
     
     # 2. Wrong attribution for party_responsible
-    correct_parties = ['DISCO', 'TCN', 'GENCO']
+    correct_parties = ['DISCO', 'Disco', 'TCN', 'GENCO']
     wrong_attribution = region_df[~region_df['party_responsible'].isin(correct_parties)][['station', 'feeder_33kv', 'date_off', 'time_off', 'party_responsible', 'outage_class']].copy()
     
     # 3. Outages with missing values (excluding date_on and time_on)
     exclude_cols = ['date_on', 'time_on']
     check_cols = [col for col in region_df.columns if col not in exclude_cols]
-    missing_values_outages = region_df[region_df[check_cols].isnull().any(axis=1)][['station', 'feeder_33kv', 'date_off', 'time_off', 'outage_class', 'party_responsible']].copy()
+    missing_rows = region_df[region_df[check_cols].isnull().any(axis=1)].copy()
+    
+    # Add helper column listing columns with missing values per record
+    def get_missing_columns(row):
+        missing = []
+        for col in check_cols:
+            if pd.isna(row[col]) or (isinstance(row[col], str) and row[col].strip() == ""):
+                missing.append(col)
+        return ", ".join(missing)
+    
+    missing_rows['missing_columns'] = missing_rows.apply(get_missing_columns, axis=1)
+    missing_values_outages = missing_rows[['station', 'feeder_33kv', 'date_off', 'time_off', 'outage_class', 'party_responsible', 'missing_columns']].copy()
     
     # 4. Feeders yet to be restored (date_on and time_on are empty)
-    unrestored_feeders = region_df[region_df['date_on'].isnull() & region_df['time_on'].isnull()][['station', 'feeder_33kv', 'date_off', 'time_off', 'outage_class', 'party_responsible']].copy()
+    unrestored_feeders = region_with_date_off_df[(region_with_date_off_df['date_on'].isnull() | (region_with_date_off_df['date_on'] == "")) & (region_with_date_off_df['time_on'].isnull() | (region_with_date_off_df['time_on'] == ""))][['station', 'feeder_33kv', 'date_off', 'time_off', 'outage_class', 'party_responsible']].copy()
     
     # ===========================
     # CREATE CHARTS

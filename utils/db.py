@@ -100,6 +100,18 @@ def read_outages(start_date: str, end_date: str) -> pd.DataFrame:
     """)
     return pd.read_sql_query(query, engine, params={"start_date": start_date, "end_date": end_date})
 
+@st.cache_data(ttl=300)
+def read_outages_using_date_off(start_date: str, end_date: str) -> pd.DataFrame:
+    engine = get_engine()
+    query = text("""
+        SELECT id, disco, region, area, station, feeder_33kv, date_off, time_off, date_on, time_on,
+               duration_outage, outage_class, last_load, event_indication, party_responsible, weather_condition
+        FROM outages
+        
+        ORDER BY date_off, time_off
+    """)
+    return pd.read_sql_query(query, engine, params={"start_date": start_date, "end_date": end_date})
+
 # -----------------------------
 # USER AUTHENTICATION HELPERS
 # -----------------------------
