@@ -26,6 +26,9 @@ if out_df.empty:
     st.warning("No outage records for this range")
     st.stop()
 
+# ensure last_load is numeric so load loss can be calculated reliably
+out_df['last_load'] = pd.to_numeric(out_df['last_load'], errors='coerce')
+
 # filtering controls
 col1, col2, col3, col4 = st.columns(4)
 region_sel = col1.selectbox("Region", options=["All"] + sorted(out_df["region"].dropna().unique()))
@@ -65,14 +68,21 @@ out_df['clipped_end']   = out_df['end_ts'].clip(lower=month_start, upper=month_e
 out_df['duration_min_clipped'] = (out_df['clipped_end'] - out_df['clipped_start']).dt.total_seconds() / 60.0
 out_df['duration_min_clipped'] = out_df['duration_min_clipped'].clip(lower=0)  # guard against negatives
 
+# compute load loss from outage duration and last_read load
+out_df['duration_hr'] = out_df['duration_min'] / 60.0
+out_df['duration_hr_clipped'] = out_df['duration_min_clipped'] / 60.0
+out_df['load_loss_mwh'] = out_df['duration_hr'] * out_df['last_load']
+out_df['load_loss_mwh_clipped'] = out_df['duration_hr_clipped'] * out_df['last_load']
+
 station_summary = out_df.groupby('station').agg(
     outages_count=('id', 'count'),
-    total_outage_min=('duration_min', 'sum')
+    total_outage_min=('duration_min', 'sum'),
+    total_load_loss_mwh=('load_loss_mwh', 'sum')
 ).reset_index().sort_values('total_outage_min', ascending=False)
 
 station_summary['avg_outage_min'] = station_summary['total_outage_min'] / station_summary['outages_count']
-
 station_summary['outage_hour'] = station_summary['total_outage_min'] / 60.0
+station_summary['avg_load_loss_mwh'] = station_summary['total_load_loss_mwh'] / station_summary['outages_count']
 
 st.dataframe(station_summary)
 
@@ -82,11 +92,13 @@ st.plotly_chart(fig, use_container_width=True)
 st.subheader("📊 Outage Table")
 feeder_summary = out_df.groupby('feeder_33kv').agg(
     outages_count=('id', 'count'),
-    total_outage_min=('duration_min', 'sum')
+    total_outage_min=('duration_min', 'sum'),
+    total_load_loss_mwh=('load_loss_mwh', 'sum')
 ).reset_index().sort_values('total_outage_min', ascending=False)
 
 feeder_summary['avg_outage_hrs'] = feeder_summary['total_outage_min'] / feeder_summary['outages_count'] / 60.0
 feeder_summary['outage_hrs'] = feeder_summary['total_outage_min'] / 60.0
+feeder_summary['avg_load_loss_mwh'] = feeder_summary['total_load_loss_mwh'] / feeder_summary['outages_count']
 feeder_summary = feeder_summary.drop(columns=["total_outage_min"])
 
 st.dataframe(feeder_summary)
@@ -99,16 +111,19 @@ days_span = (end_date - start_date).days + 1
 # pivot by station and feeder so that we can join back against SLA data
 # NOTE: uses duration_min_clipped so cross-month outages only count hours within the selected date range
 feeder_party_pivot = out_df.groupby(['station','feeder_33kv', 'party_responsible']).agg(
-    total_outage_hour=('duration_min_clipped', lambda x: x.sum() / 60)
+    total_outage_hour=('duration_min_clipped', lambda x: x.sum() / 60),
+    total_load_loss_mwh=('load_loss_mwh_clipped', 'sum')
 ).reset_index().pivot_table(
     index=['station','feeder_33kv'],
     columns='party_responsible',
-    values='total_outage_hour',
+    values=['total_outage_hour', 'total_load_loss_mwh'],
     aggfunc='sum',
     fill_value=0
 )
 
-feeder_party_pivot.columns.name = None  # clean up column name
+# flatten multiindex columns to keep party columns readable
+feeder_party_pivot.columns = [f"{metric}_{party}" for metric, party in feeder_party_pivot.columns]
+feeder_party_pivot.columns.name = None
 feeder_party_pivot = feeder_party_pivot.reset_index()
 
 # merge SLA table (per day) and scale by number of days

@@ -81,6 +81,9 @@ out_df['end_ts'] = pd.to_datetime(
     errors='coerce'
 )
 out_df['duration_min'] = (out_df['end_ts'] - out_df['start_ts']).dt.total_seconds() / 60.0
+out_df['last_load'] = pd.to_numeric(out_df['last_load'], errors='coerce')
+out_df['duration_hr'] = out_df['duration_min'] / 60.0
+out_df['load_loss_mwh'] = out_df['duration_hr'] * out_df['last_load']
 
 # Process each region
 col_word, col_pdf = st.columns(2)
@@ -102,19 +105,24 @@ for region in selected_regions:
     num_outages = len(region_df)
     total_outage_minutes = region_df['duration_min'].sum(skipna=True)
     avg_duration = region_df['duration_min'].mean()
+    total_load_loss_mwh = region_df['load_loss_mwh'].sum(skipna=True)
+    avg_load_loss_mwh = region_df['load_loss_mwh'].mean()
     
     summary_stats = {
         'num_outages': num_outages,
         'total_minutes': total_outage_minutes,
-        'avg_duration_min': avg_duration
+        'avg_duration_min': avg_duration,
+        'total_load_loss_mwh': total_load_loss_mwh,
+        'avg_load_loss_mwh': avg_load_loss_mwh
     }
     
     # Display metrics
-    metric_cols = st.columns(4)
+    metric_cols = st.columns(5)
     metric_cols[0].metric("Total Outages", num_outages)
     metric_cols[1].metric("Total Minutes", f"{total_outage_minutes:.0f}")
     metric_cols[2].metric("Total Hours", f"{total_outage_minutes / 60:.1f}")
     metric_cols[3].metric("Avg Duration (min)", f"{avg_duration:.1f}")
+    metric_cols[4].metric("Total Load Loss (MWh)", f"{total_load_loss_mwh:.2f}")
     
     # ===========================
     # GENERATE SUMMARIES
@@ -123,17 +131,21 @@ for region in selected_regions:
     # Station summary
     station_summary = region_df.groupby('station').agg(
         outages_count=('id', 'count'),
-        total_outage_min=('duration_min', 'sum')
+        total_outage_min=('duration_min', 'sum'),
+        total_load_loss_mwh=('load_loss_mwh', 'sum')
     ).reset_index().sort_values('total_outage_min', ascending=False)
     station_summary['avg_outage_min'] = station_summary['total_outage_min'] / station_summary['outages_count']
+    station_summary['avg_load_loss_mwh'] = station_summary['total_load_loss_mwh'] / station_summary['outages_count']
     
     # Feeder summary
     feeder_summary = region_df.groupby('feeder_33kv').agg(
         outages_count=('id', 'count'),
-        total_outage_min=('duration_min', 'sum')
+        total_outage_min=('duration_min', 'sum'),
+        total_load_loss_mwh=('load_loss_mwh', 'sum')
     ).reset_index().sort_values('total_outage_min', ascending=False)
     feeder_summary['avg_outage_hrs'] = feeder_summary['total_outage_min'] / feeder_summary['outages_count'] / 60.0
     feeder_summary['outage_hrs'] = feeder_summary['total_outage_min'] / 60.0
+    feeder_summary['avg_load_loss_mwh'] = feeder_summary['total_load_loss_mwh'] / feeder_summary['outages_count']
     
     # Cause summary
     cause_summary = region_df['outage_class'].fillna('Unknown').value_counts().reset_index()
@@ -227,7 +239,7 @@ for region in selected_regions:
     # 1. Top 20% most prolonged outages
     prolonged_outages = region_df.sort_values('duration_min', ascending=False)
     top_20_percent_count = max(1, int(len(prolonged_outages) * 0.2))  # At least 1
-    top_prolonged_outages = prolonged_outages.head(top_20_percent_count)[['station', 'feeder_33kv', 'date_off', 'time_off', 'duration_min', 'outage_class', 'party_responsible']].copy()
+    top_prolonged_outages = prolonged_outages.head(top_20_percent_count)[['station', 'feeder_33kv', 'date_off', 'time_off', 'duration_min', 'load_loss_mwh', 'outage_class', 'party_responsible']].copy()
     
     # 2. Wrong attribution for party_responsible
     correct_parties = ['DISCO', 'Disco', 'TCN', 'GENCO']

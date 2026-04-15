@@ -155,12 +155,13 @@ def generate_word_report(
     # Summary metrics table
     try:
         summary_data = {
-            'Metric': ['Number of Outages', 'Total Outage Minutes', 'Total Outage Hours', 'Average Duration (minutes)'],
+            'Metric': ['Number of Outages', 'Total Outage Minutes', 'Total Outage Hours', 'Average Duration (minutes)', 'Total Load Loss (MWh)'],
             'Value': [
                 str(summary_stats.get('num_outages', 0)),
                 f"{float(summary_stats.get('total_minutes', 0)):.2f}",
                 f"{float(summary_stats.get('total_minutes', 0)) / 60:.2f}",
-                f"{float(summary_stats.get('avg_duration_min', 0)):.2f}"
+                f"{float(summary_stats.get('avg_duration_min', 0)):.2f}",
+                f"{float(summary_stats.get('total_load_loss_mwh', 0)):.2f}"
             ]
         }
         summary_df = pd.DataFrame(summary_data)
@@ -195,7 +196,7 @@ def generate_word_report(
     # Feeder Summary
     if not feeder_summary.empty:
         try:
-            display_cols = ['feeder_33kv', 'outages_count', 'outage_hrs', 'avg_outage_hrs']
+            display_cols = ['feeder_33kv', 'outages_count', 'outage_hrs', 'avg_outage_hrs', 'total_load_loss_mwh', 'avg_load_loss_mwh']
             feeder_display = feeder_summary[display_cols] if all(c in feeder_summary.columns for c in display_cols) else feeder_summary.head(10)
             add_table_to_word(doc, feeder_display.head(15), 'Top Feeders by Outage Hours (Top 15)')
         except Exception as e:
@@ -246,7 +247,7 @@ def generate_word_report(
     # Raw Outages Table
     if not outage_df.empty:
         try:
-            display_cols = ['date_off', 'time_off', 'date_on', 'time_on', 'station', 'outage_class', 'party_responsible', 'weather_condition']
+            display_cols = ['date_off', 'time_off', 'date_on', 'time_on', 'station', 'outage_class', 'party_responsible', 'weather_condition', 'load_loss_mwh']
             available_cols = [c for c in display_cols if c in outage_df.columns]
             outage_display = outage_df[available_cols].head(50)
             add_table_to_word(doc, outage_display, 'Recent Outage Records (Latest 50)')
@@ -330,7 +331,8 @@ def generate_pdf_report_with_tables(
         ['Number of Outages', str(summary_stats.get('num_outages', 0))],
         ['Total Outage Minutes', f"{float(summary_stats.get('total_minutes', 0)):.2f}"],
         ['Total Outage Hours', f"{float(summary_stats.get('total_minutes', 0)) / 60:.2f}"],
-        ['Average Duration (min)', f"{float(summary_stats.get('avg_duration_min', 0)):.2f}"]
+        ['Average Duration (min)', f"{float(summary_stats.get('avg_duration_min', 0)):.2f}"],
+        ['Total Load Loss (MWh)', f"{float(summary_stats.get('total_load_loss_mwh', 0)):.2f}"]
     ]
     
     summary_table = Table(summary_data, colWidths=[8 * cm, 5 * cm])
@@ -350,13 +352,15 @@ def generate_pdf_report_with_tables(
     # Station summary table
     if not station_summary.empty:
         story.append(Paragraph('<b>Top Stations by Outage Minutes</b>', styles['Heading2']))
-        station_data = [['Station', 'Outages', 'Total Min', 'Avg Min']]
+        station_data = [['Station', 'Outages', 'Total Min', 'Avg Min', 'Total Load Loss (MWh)', 'Avg Load Loss (MWh)']]
         for _, row in station_summary.head(10).iterrows():
             station_data.append([
                 str(row.get('station', '')),
                 str(row.get('outages_count', '')),
                 f"{float(row.get('total_outage_min', 0)):.2f}",
-                f"{float(row.get('avg_outage_min', 0)):.2f}"
+                f"{float(row.get('avg_outage_min', 0)):.2f}",
+                f"{float(row.get('total_load_loss_mwh', 0)):.2f}",
+                f"{float(row.get('avg_load_loss_mwh', 0)):.2f}"
             ])
         
         station_table = Table(station_data, colWidths=[6 * cm, 3 * cm, 4 * cm, 4 * cm])
@@ -369,6 +373,31 @@ def generate_pdf_report_with_tables(
             ('GRID', (0, 0), (-1, -1), 1, colors.grey)
         ]))
         story.append(station_table)
+        story.append(Spacer(1, 0.5 * cm))
+    
+    # Feeder summary table
+    if not feeder_summary.empty:
+        story.append(Paragraph('<b>Top Feeders by Outage Hours</b>', styles['Heading2']))
+        feeder_data = [['Feeder', 'Outages', 'Total Hours', 'Avg Hours', 'Total Load Loss (MWh)', 'Avg Load Loss (MWh)']]
+        for _, row in feeder_summary.head(10).iterrows():
+            feeder_data.append([
+                str(row.get('feeder_33kv', '')),
+                str(row.get('outages_count', '')),
+                f"{float(row.get('outage_hrs', 0)):.2f}",
+                f"{float(row.get('avg_outage_hrs', 0)):.2f}",
+                f"{float(row.get('total_load_loss_mwh', 0)):.2f}",
+                f"{float(row.get('avg_load_loss_mwh', 0)):.2f}"
+            ])
+        feeder_table = Table(feeder_data, colWidths=[5 * cm, 2.5 * cm, 3.5 * cm, 3.5 * cm, 4 * cm, 4 * cm])
+        feeder_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+        ]))
+        story.append(feeder_table)
         story.append(Spacer(1, 0.5 * cm))
     
     # Feeder-Party Pivot Table (Outage Table)

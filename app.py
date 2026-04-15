@@ -27,6 +27,7 @@ st.markdown(
     4. Transformer Load
     5. Outage Analytics
     6. Reliability KPI Report
+    10. Regional Dashboard
 
     The pages live in the `pages/` folder. Make sure you have a `utils/` folder with
     `db.py` and `pdf_generator.py`.
