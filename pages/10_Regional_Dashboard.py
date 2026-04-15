@@ -95,7 +95,7 @@ for region in selected_regions:
     region_stations = int(region_df["station"].nunique())
     region_feeders = int(region_df["feeder_33kv"].nunique())
 
-    with st.expander(f"{region} — Outage details", expanded=len(selected_regions) == 1):
+    with st.expander(f"{region} Region — Outage details", expanded=len(selected_regions) == 1):
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Outages", region_outages)
         col2.metric("Outage Hours", f"{region_total_hours:.2f}")
@@ -153,20 +153,20 @@ for region in selected_regions:
             top_feeders,
             x="feeder_33kv",
             y="outage_hours",
-            title=f"Top Feeders by Outage Hours — {region}",
+            title=f"Top Feeders by Outage Hours — {region} Region",
             labels={"outage_hours": "Outage Hours"},
         )
         cause_fig = px.pie(
             cause_breakdown,
             names="outage_class",
             values="count",
-            title=f"Outage Cause Breakdown — {region}",
+            title=f"Outage Cause Breakdown — {region} Region",
         )
         party_fig = px.pie(
             party_breakdown,
             names="party_responsible",
             values="count",
-            title=f"Party Responsible Breakdown — {region}",
+            title=f"Party Responsible Breakdown — {region} Region",
         )
 
         st.plotly_chart(station_fig, use_container_width=True)
