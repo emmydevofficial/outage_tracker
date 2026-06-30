@@ -180,7 +180,7 @@ elif status_choice == "Negative (<0)":
     filtered = filtered[filtered['available_outage_hours_tcn'] < 0]
 
 # apply color styling to available hours column
-styler = filtered.style.applymap(
+styler = filtered.style.map(
     lambda v: 'color: green' if v > 0 else 'color: red',
     subset=['available_outage_hours_tcn']
 )
