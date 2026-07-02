@@ -131,35 +131,50 @@ sla = read_tcn_sla_compliance()
 if not sla.empty:
     sla['maximum_outage_hours'] = sla['maximum_outage_hours'] * days_span
     sla["actual_outage_hours"] = "Yes"
+    
+    # Create clean columns for merge to prevent mismatch due to whitespace or casing
+    feeder_party_pivot['station_clean'] = feeder_party_pivot['station'].astype(str).str.strip().str.upper()
+    feeder_party_pivot['feeder_clean'] = feeder_party_pivot['feeder_33kv'].astype(str).str.strip().str.upper()
+    
+    sla_clean = sla.copy()
+    sla_clean['station_clean'] = sla_clean['station'].astype(str).str.strip().str.upper()
+    sla_clean['feeder_clean'] = sla_clean['feeder_name'].astype(str).str.strip().str.upper()
+    sla_clean = sla_clean.drop(columns=['station', 'feeder_name'], errors='ignore')
+    
+    # Join on both station and feeder name using clean keys
+    feeder_party_pivot = feeder_party_pivot.merge(
+        sla_clean,
+        on=['station_clean', 'feeder_clean'],
+        how='left'
+    )
+    
+    # Drop the temporary clean merge columns
+    feeder_party_pivot = feeder_party_pivot.drop(columns=['station_clean', 'feeder_clean'], errors='ignore')
 
-# join on both station and feeder name
-feeder_party_pivot = feeder_party_pivot.merge(
-    sla,
-    left_on=['station','feeder_33kv'],
-    right_on=['station','feeder_name'],
-    how='left'
-)
+# Handle missing SLA compliance values
+if 'maximum_outage_hours' not in feeder_party_pivot.columns:
+    feeder_party_pivot['maximum_outage_hours'] = 4.0 * days_span
+else:
+    feeder_party_pivot['maximum_outage_hours'] = feeder_party_pivot['maximum_outage_hours'].fillna(4.0 * days_span)
 
-# drop the redundant feeder_name column added by the merge
-if 'feeder_name' in feeder_party_pivot.columns:
-    feeder_party_pivot = feeder_party_pivot.drop(columns=['feeder_name'])
+if 'actual_outage_hours' not in feeder_party_pivot.columns:
+    feeder_party_pivot['actual_outage_hours'] = "Assumed 4 hours/day (not in db)"
+else:
+    feeder_party_pivot['actual_outage_hours'] = feeder_party_pivot['actual_outage_hours'].fillna("Assumed 4 hours/day (not in db)")
 
-# absent entries result in NaN; treat as zero (unknown SLA)
-feeder_party_pivot['maximum_outage_hours'] = 4 * days_span  # default to 4 hours per day if SLA data is missing
-feeder_party_pivot['maximum_outage_hours'] = feeder_party_pivot['maximum_outage_hours'].fillna(0)
-feeder_party_pivot["actual_outage_hours"] = feeder_party_pivot['actual_outage_hours'].fillna("Assumed 4 hours/day (not in db)")
-
-# calculate disco and tcn allowances
+# Calculate disco and tcn allowances
 feeder_party_pivot['max_hours_disco'] = feeder_party_pivot['maximum_outage_hours'] * 0.7
 feeder_party_pivot['max_hours_tcn'] = feeder_party_pivot['maximum_outage_hours'] * 0.3
 
-# ensure the dynamic TCN column exists and default to zero when absent
-if 'TCN' not in feeder_party_pivot.columns:
-    feeder_party_pivot['TCN'] = 0
+# Ensure the dynamic total_outage_hour_TCN column exists and default to zero when absent
+if 'total_outage_hour_TCN' not in feeder_party_pivot.columns:
+    feeder_party_pivot['total_outage_hour_TCN'] = 0.0
+else:
+    feeder_party_pivot['total_outage_hour_TCN'] = feeder_party_pivot['total_outage_hour_TCN'].fillna(0.0)
 
-# compute the remaining/available hours for TCN
+# Compute the remaining/available hours for TCN
 feeder_party_pivot['available_outage_hours_tcn'] = (
-    feeder_party_pivot['max_hours_tcn'] - feeder_party_pivot['TCN']
+    feeder_party_pivot['max_hours_tcn'] - feeder_party_pivot['total_outage_hour_TCN']
 )
 
 feeder_party_pivot.columns.name = None  # clean up column name
@@ -179,9 +194,17 @@ if status_choice == "Positive (≥0)":
 elif status_choice == "Negative (<0)":
     filtered = filtered[filtered['available_outage_hours_tcn'] < 0]
 
-# apply color styling to available hours column
+# apply color styling to available hours column (green if positive, red if negative)
+def style_available_hours(val):
+    if val > 0:
+        return 'color: green'
+    elif val < 0:
+        return 'color: red'
+    else:
+        return ''
+
 styler = filtered.style.map(
-    lambda v: 'color: green' if v > 0 else 'color: red',
+    style_available_hours,
     subset=['available_outage_hours_tcn']
 )
 
